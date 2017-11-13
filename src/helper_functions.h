@@ -58,6 +58,7 @@ inline double dist(double x1, double y1, double x2, double y2) {
 	return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
+
 inline double normalize_angle(double angle){
 	while (angle > M_PI) angle -= 2.*M_PI;
 	while (angle < -M_PI) angle += 2.*M_PI;

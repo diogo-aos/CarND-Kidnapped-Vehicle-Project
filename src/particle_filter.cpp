@@ -70,7 +70,18 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to
 	//   implement this method and use it as a helper during the updateWeights phase.
-
+	double temp_dist;
+	for (int i=0; i<observations.size(); i++){
+		int max_id = predicted[0].id;
+		double max_dist = dist(observations[i].x, observations[i].y, predicted[0].x, predicted[0].y);
+		for (int j=1; j<predicted.size(); j++){
+			temp_dist = dist(observations[i].x, observations[i].y, predicted[j].x, predicted[j].y);
+			if (temp_dist < max_dist){
+				max_id = predicted[j].id;
+				max_dist = temp_dist;
+			}
+		}
+	}
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
@@ -85,6 +96,70 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+	// pre calculations for weight calculations
+	double static first_term = (1  / (2 * M_PI * std_landmark[0] * std_landmark[1]));
+	double static x_under = 2 * std_landmark[0] * std_landmark[0];
+	double static y_under = 2 * std_landmark[0] * std_landmark[0];
+
+	for (i=0; i<particles.size(); i++){
+		// transform observations to map coordinates from particle perspective
+		std::vector<LandmarkObs> transformedObservations;
+		std::vector<LandmarkObs> landmarksInRange;
+		for (j=0; j<observations.size(); j++){
+			LandmarkObs tObs;
+			tObs.x = particles[i].x +
+							 cos(particles[i].theta) * observations[j].x -
+							 sin(particles[i].theta) * observations[j].y;
+		  tObs.y = particles[i].y +
+							 sin(particles[i].theta) * observations[j].x +
+							 cos(particles[i].theta) * observations[j].y;
+			transformedObservations.push(tObs);
+		} // end for transform observations
+
+		// select map landmarks within the sensor range
+		for (j=0; j<map_landmarks.landmark_list.size(); j++){
+			if(dist(particle[i].x, article[i].y,
+				 map_landmarks.landmark_list[j].x_f, map_landmarks.landmark_list[j].y_f) <= sensor_range){
+				LandmarkObs tObs;
+				tObs.x = map_landmarks.landmark_list[j].x_f;
+				tObs.y = map_landmarks.landmark_list[j].y_f;
+				// tObs.id = map_landmarks.landmark_list[j].id_i;
+				tObs.id = j;
+				landmarksInRange.push(tObs);
+			} // end if
+		}  // end for landmarks within range
+
+		// associate each transformed measurement with a map landmark using NN
+		dataAssociation(landmarksInRange, transformedObservations)
+
+		// compute total weight my multiplying all weights of predicted landmaks
+		// compute weight of each predicted landmark using a multivariate distribution
+		double total_weight = 1;
+		std::vector<int> associations;
+		std::vector<double> sense_x;
+		std::vector<double> sense_y;
+		for (j=0; j<transformedObservations.size(); j++){
+			int associated_map_idx = transformedObservations[i].id;
+			static double x = transformedObservations[i].x,
+									  y = transformedObservations[i].y;
+			static double mu_x = map_landmarks.landmark_list[associated_map_idx].x,
+								    mu_y = map_landmarks.landmark_list[associated_map_idx].y;
+			static double x_term = (x - mu_x) * (x - mu_x) / x_under;
+			static double y_term = (y - mu_y) * (y - mu_y) / y_under;
+			double w = first_term * exp(-(x_term + y_term));
+			total_weight *= w;
+
+			associations.push(map_landmarks.landmark_list[associated_map_idx].id_i);
+			sense_x.push(x);
+			sense_y.push(y);
+		} // end for weights
+		particles[i].weight = total_weight;
+
+		SetAssociations(particles[i], associations, sense_x, sense_y);
+		
+	} //end for loop over particles
+
 }
 
 void ParticleFilter::resample() {
@@ -106,7 +181,7 @@ Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> ass
 	particle.sense_x.clear();
 	particle.sense_y.clear();
 
-	particle.associations= associations;
+	particle.associations = associations;
  	particle.sense_x = sense_x;
  	particle.sense_y = sense_y;
 
@@ -117,26 +192,28 @@ string ParticleFilter::getAssociations(Particle best)
 {
 	vector<int> v = best.associations;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<int>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+  copy( v.begin(), v.end(), ostream_iterator<int>(ss, " "));
+  string s = ss.str();
+  s = s.substr(0, s.length()-1);  // get rid of the trailing space
+  return s;
 }
+
 string ParticleFilter::getSenseX(Particle best)
 {
 	vector<double> v = best.sense_x;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+  copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
+  string s = ss.str();
+  s = s.substr(0, s.length()-1);  // get rid of the trailing space
+  return s;
 }
+
 string ParticleFilter::getSenseY(Particle best)
 {
 	vector<double> v = best.sense_y;
 	stringstream ss;
-    copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
-    string s = ss.str();
-    s = s.substr(0, s.length()-1);  // get rid of the trailing space
-    return s;
+  copy( v.begin(), v.end(), ostream_iterator<float>(ss, " "));
+  string s = ss.str();
+  s = s.substr(0, s.length()-1);  // get rid of the trailing space
+  return s;
 }
