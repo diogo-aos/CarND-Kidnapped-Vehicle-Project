@@ -98,10 +98,11 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   http://planning.cs.uiuc.edu/node99.html
 
 	// pre calculations for weight calculations
-	double static first_term = (1  / (2 * M_PI * std_landmark[0] * std_landmark[1]));
+	double static gauss_norm = (1  / (2 * M_PI * std_landmark[0] * std_landmark[1]));
 	double static x_under = 2 * std_landmark[0] * std_landmark[0];
 	double static y_under = 2 * std_landmark[0] * std_landmark[0];
 
+	double particle_weight_sum += 0;  // will be used for probability normalization
 	for (i=0; i<particles.size(); i++){
 		// transform observations to map coordinates from particle perspective
 		std::vector<LandmarkObs> transformedObservations;
@@ -147,7 +148,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 								    mu_y = map_landmarks.landmark_list[associated_map_idx].y;
 			static double x_term = (x - mu_x) * (x - mu_x) / x_under;
 			static double y_term = (y - mu_y) * (y - mu_y) / y_under;
-			double w = first_term * exp(-(x_term + y_term));
+			double w = gauss_norm * exp(-(x_term + y_term));
 			total_weight *= w;
 
 			associations.push(map_landmarks.landmark_list[associated_map_idx].id_i);
@@ -155,18 +156,32 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			sense_y.push(y);
 		} // end for weights
 		particles[i].weight = total_weight;
+		weights[i] = total_weight;
+		particle_weight_sum += total_weight;
 
 		SetAssociations(particles[i], associations, sense_x, sense_y);
-		
+
 	} //end for loop over particles
 
+	// normalize particle weights/probabilities
+	// this step is needed for resampling
+	for (i=0; i<weights.size(); i++)
+		weights[i] /= particle_weight_sum;
 }
 
 void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight.
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	std::vector<Particle> new_particles;
+	default_random_engine gen;
+	std::discrete_distribution<> d(weights);
+	for(i=0; i<particles.size(); i++){
+		int sampled_particle_idx = d(gen);
+		new_particles.push(particles[sampled_particle_idx]);
+	}
 
+	particles = new_particles;
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)
