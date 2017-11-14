@@ -4,6 +4,8 @@
 #include <math.h>
 #include "particle_filter.h"
 
+#define DEBUG 0
+
 using namespace std;
 
 // for convenience
@@ -68,7 +70,7 @@ int main()
 
           if (!pf.initialized()) {
             cout << "initialiazing..." << endl;
-            // cout << j << endl;
+            cout << j << endl;
 
           	// Sense noisy position data from the simulator
       			double sense_x = std::stod(j[1]["sense_x"].get<std::string>());
@@ -119,13 +121,14 @@ int main()
           cout << "updating..." << endl;
     		  pf.updateWeights(sensor_range, sigma_landmark, noisy_observations, map);
 
+#if DEBUG == 1
           double total_prob = 0;
           for(int i=0; i< pf.particles.size(); i++){
-            cout << "after update:: particle.w " << pf.particles[i].weight<< i <<endl;
+            cout << "after update:: particle[" << i << "]=" << pf.particles[i].weight <<endl;
             total_prob += pf.particles[i].weight;
           }
-          cout << "after update:: particle prob sum" << total_prob <<endl;
-
+          cout << "after update:: particle prob sum = " << total_prob <<endl;
+#endif
 
           cout << "resampling..." << endl;
     		  pf.resample();

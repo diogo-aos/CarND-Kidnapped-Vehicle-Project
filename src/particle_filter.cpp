@@ -18,6 +18,8 @@
 #include "particle_filter.h"
 
 #define DEBUG 0
+#define DEBUG_2 1
+
 
 using namespace std;
 
@@ -92,16 +94,27 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	double temp_dist;
 
 	for (int i=0; i<observations.size(); i++){
-		int max_id = predicted[0].id;
+		double x_obs = observations[i].x,
+		       y_obs = observations[i].y;
+#if DEBUG == 1
+		cout << "        dataAssociation :: observation " << i << endl;
+#endif
+		int associated_id = predicted[0].id;
 		double max_dist = dist(observations[i].x, observations[i].y, predicted[0].x, predicted[0].y);
+
 		for (int j=1; j<predicted.size(); j++){
-			temp_dist = dist(observations[i].x, observations[i].y, predicted[j].x, predicted[j].y);
-			if (temp_dist > max_dist){
-				max_id = predicted[j].id;
+			double x_pred = predicted[j].x,
+			       y_pred = predicted[j].y;
+			temp_dist = dist(x_obs, y_obs, x_pred, y_pred);
+			if (temp_dist < max_dist){  // select predicted landmark closest to observation
+				associated_id = predicted[j].id;
 				max_dist = temp_dist;
 			}
 		}
-		observations[i].id = max_id;
+#if DEBUG == 1
+		cout << "        dataAssociation :: associated to " << associated_id << endl;
+#endif
+		observations[i].id = associated_id;
 	}
 }
 
@@ -119,72 +132,114 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   http://planning.cs.uiuc.edu/node99.html
 
 	// pre calculations for weight computation
-	double static gauss_norm = (1  / (2 * M_PI * std_landmark[0] * std_landmark[1]));
-	double static x_under = 2 * std_landmark[0] * std_landmark[0];
-	double static y_under = 2 * std_landmark[1] * std_landmark[1];
+	double gauss_norm = (1  / (2 * M_PI * std_landmark[0] * std_landmark[1]));
+	double x_under = 2 * std_landmark[0] * std_landmark[0];
+	double y_under = 2 * std_landmark[1] * std_landmark[1];
 
-	double particle_weight_sum = 0;  // will be used for probability normalization
-	for (int i=0; i<num_particles; i++){
-		// transform observations to map coordinates from particle perspective
+	double particle_weight_sum = 0.0;  // will be used for probability normalization
+
+	for (int i=0; i<num_particles; i++){  // loop over all particles
+		// load particle x, y, theta to more convenient variables
+		double x_p = particles[i].x,
+				   y_p = particles[i].y,
+					 theta_p = particles[i].theta;
+#if DEBUG_2 == 1
+		cout << "    update :: particle " << i << " x_p=" << x_p << "  y_p=" << y_p << endl;
+#endif
+
+    // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+		//  								TRANSFORM OBSERVATIONS
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+#if DEBUG_2 == 1
+		cout << "    update :: transformed observations" << endl;
+#endif
 		std::vector<LandmarkObs> transformedObservations;
-		std::vector<LandmarkObs> landmarksInRange;
 		for (int j=0; j<observations.size(); j++){
+			double x_c = observations[j].x,
+			       y_c = observations[j].y;
+
+			double x_m = x_p + cos(theta_p) * x_c - sin(theta_p) * y_c,
+			       y_m = y_p + sin(theta_p) * x_c + cos(theta_p) * y_c;
+
 			LandmarkObs tObs;
-			tObs.x = particles[i].x +
-							 cos(particles[i].theta) * observations[j].x -
-							 sin(particles[i].theta) * observations[j].y;
-		  tObs.y = particles[i].y +
-							 sin(particles[i].theta) * observations[j].x +
-							 cos(particles[i].theta) * observations[j].y;
+			tObs.x = x_m;
+		  tObs.y = y_m;
 			transformedObservations.push_back(tObs);
 		} // end for transform observations
 
-		// select map landmarks within the sensor range
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+		//  								SELECT PREDICTED LANDMARKS
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+#if DEBUG_2 == 1
+		cout << "    update :: landmarkd in sensor range" << endl;
+#endif
+		std::vector<LandmarkObs> landmarksInRange;
 		for (int j=0; j<map_landmarks.landmark_list.size(); j++){
+			double x_l = map_landmarks.landmark_list[j].x_f,
+			       y_l = map_landmarks.landmark_list[j].y_f;
 			// check if distance between particle and landmark is within sensor range
-			if(dist(particles[i].x, particles[i].y,
-				 	    map_landmarks.landmark_list[j].x_f,
-							map_landmarks.landmark_list[j].y_f)
-				 <= sensor_range){
+			if(dist(x_p, y_p, x_l, y_l) <= sensor_range){
 				LandmarkObs tObs;
-				tObs.x = map_landmarks.landmark_list[j].x_f;
-				tObs.y = map_landmarks.landmark_list[j].y_f;
+				tObs.x = x_l;
+				tObs.y = y_l;
 				// tObs.id = map_landmarks.landmark_list[j].id_i;
 				tObs.id = j;
 				landmarksInRange.push_back(tObs);
 			} // end if dist below sensor range
 		}  // end for landmarks within range
+#if DEBUG_2 == 1
+		cout << "    update :: num predicted landmarks in sensor range " << landmarksInRange.size() << endl;
+		cout << "    update :: num observations " << transformedObservations.size() << endl;
+#endif
 
-		// associate each transformed measurement with a map landmark using NN
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+		//  								ASSOCIATE OBSERVATIONS WITH LANDMARKS
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+#if DEBUG_2 == 1
+		cout << "    update :: dataAssociation" << endl;
+#endif
 		dataAssociation(landmarksInRange, transformedObservations);
 
-		// compute total weight my multiplying all weights of predicted landmaks
-		// compute weight of each predicted landmark using a multivariate distribution
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+		//  								COMPUTE WEIGHTS
+		// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+#if DEBUG_2 == 1
+		cout << "    update :: weight computation" << endl;
+#endif
 		double total_weight = 1.0;
 		std::vector<int> associations;
 		std::vector<double> sense_x;
 		std::vector<double> sense_y;
-		cout << "num obervations = " << transformedObservations.size() << endl;
 		for (int j=0; j<transformedObservations.size(); j++){
+			// index of landmark associated with this observation
 			int associated_map_idx = transformedObservations[j].id;
-			double x = transformedObservations[j].x,
-						 y = transformedObservations[j].y;
+
+		  double x = transformedObservations[j].x,
+						        y = transformedObservations[j].y;
 			double mu_x = map_landmarks.landmark_list[associated_map_idx].x_f,
-						 mu_y = map_landmarks.landmark_list[associated_map_idx].y_f;
+						        mu_y = map_landmarks.landmark_list[associated_map_idx].y_f;
+
 			double x_term = (x - mu_x) * (x - mu_x) / x_under;
 			double y_term = (y - mu_y) * (y - mu_y) / y_under;
 			double exponential = -(x_term + y_term);
 			double w = gauss_norm * exp(exponential);
 			total_weight *= w;
-			cout <<	std::scientific;
-			cout << "update :: x = " << x << "  y = " << y << endl;
-			cout << "update :: mu_x = " << mu_x << "  mu_y = " << mu_y << endl;
-			cout << "update :: x_term = " << x_term << endl;
-			cout << "update :: x_under = " << x_under << endl;
-			cout << "update :: gauss_norm = " << gauss_norm << endl;
-			cout << "update :: exponential = " << exponential << endl;
-			cout << "update :: w = " << w << endl;
 
+#if DEBUG == 1
+			cout <<	std::scientific;
+			cout << "        update :: particle " << i << " observation " << j << endl;
+			cout << "        update :: x_p = " << x_p << "  y_p = " << y_p << endl;
+			cout << "        update :: x = " << x << "  y = " << y << endl;
+			cout << "        update :: mu_x = " << mu_x << "  mu_y = " << mu_y << endl;
+			cout << "        update :: x - mu_x = " << x - mu_x << endl;
+			cout << "        update :: y - mu_y = " << y - mu_y << endl;
+			cout << "        update :: x_term = " << x_term << endl;
+			cout << "        update :: x_under = " << x_under << endl;
+			cout << "        update :: gauss_norm = " << gauss_norm << endl;
+			cout << "        update :: exponential = " << exponential << endl;
+			cout << "        update :: w = " << w << endl;
+			cout << "        update :: total_weight = " << total_weight << endl;
+#endif
 
 			associations.push_back(map_landmarks.landmark_list[associated_map_idx].id_i);
 			sense_x.push_back(x);
@@ -192,22 +247,11 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		} // end for weights
 		particles[i].weight = total_weight;
 		weights[i] = total_weight;
+		particle_weight_sum += total_weight;
 
-		SetAssociations(particles[i], associations, sense_x, sense_y);
+		particles[i] = SetAssociations(particles[i], associations, sense_x, sense_y);
 
 	} //end for loop over particles
-}
-
-void ParticleFilter::resample() {
-	// TODO: Resample particles with replacement with probability proportional to their weight.
-	// NOTE: You may find std::discrete_distribution helpful here.
-	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
-	std::vector<Particle> new_particles;
-	default_random_engine gen;
-
-	double particle_weight_sum = 0.0;
-	for (int i=0; i<particles.size(); i++)
-		particle_weight_sum += particles[i].weight;
 
 	// normalize particle weights/probabilities
 	double normalized_w;
@@ -217,10 +261,21 @@ void ParticleFilter::resample() {
 		weights[i] = normalized_w;
 		particles[i].weight = normalized_w;
 		total_prob += weights[i];
-	}
-	cout << "resample :: total prob of weights = " << total_prob << endl;
+	}  // end for weights
+} // end function
 
-	std::discrete_distribution<> d(weights.begin(), weights.end());
+void ParticleFilter::resample() {
+	// TODO: Resample particles with replacement with probability proportional to their weight.
+	// NOTE: You may find std::discrete_distribution helpful here.
+	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	std::vector<Particle> new_particles;
+	default_random_engine gen;
+
+	// double particle_weight_sum = 0.0;
+	// for (int i=0; i<particles.size(); i++)
+	// 	particle_weight_sum += particles[i].weight;
+
+	std::discrete_distribution<int> d(weights.begin(), weights.end());
 	for(int i=0; i<particles.size(); i++){
 		int sampled_particle_idx = d(gen);
 		new_particles.push_back(particles[sampled_particle_idx]);
