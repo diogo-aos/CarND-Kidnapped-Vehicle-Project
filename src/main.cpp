@@ -61,22 +61,30 @@ int main()
 
         if (event == "telemetry") {
           // j[1] is the data JSON object
+          cout << "received telemetry..." << endl;
+          // cout << "j=" << j << endl;
+          // cout << "j[0]=" <<j[0] << endl;
+          // cout << "j[1]=" <<j[1] << endl;
 
           if (!pf.initialized()) {
+            cout << "initialiazing..." << endl;
+            // cout << j << endl;
 
           	// Sense noisy position data from the simulator
       			double sense_x = std::stod(j[1]["sense_x"].get<std::string>());
       			double sense_y = std::stod(j[1]["sense_y"].get<std::string>());
       			double sense_theta = std::stod(j[1]["sense_theta"].get<std::string>());
-
+            cout << "calling init..." << endl;
       			pf.init(sense_x, sense_y, sense_theta, sigma_pos);
     		  }
     		  else {
+            cout << "predicting..." << endl;
     			  // Predict the vehicle's next state from previous (noiseless control) data.
     		  	double previous_velocity = std::stod(j[1]["previous_velocity"].get<std::string>());
     			  double previous_yawrate = std::stod(j[1]["previous_yawrate"].get<std::string>());
 
     			  pf.prediction(delta_t, sigma_pos, previous_velocity, previous_yawrate);
+
     		  }
 
     		  // receive noisy observation data from the simulator
@@ -108,11 +116,24 @@ int main()
         	}
 
     		  // Update the weights and resample
+          cout << "updating..." << endl;
     		  pf.updateWeights(sensor_range, sigma_landmark, noisy_observations, map);
+
+          double total_prob = 0;
+          for(int i=0; i< pf.particles.size(); i++){
+            cout << "after update:: particle.w " << pf.particles[i].weight<< i <<endl;
+            total_prob += pf.particles[i].weight;
+          }
+          cout << "after update:: particle prob sum" << total_prob <<endl;
+
+
+          cout << "resampling..." << endl;
     		  pf.resample();
 
     		  // Calculate and output the average weighted error of the particle filter over all time steps so far.
     		  vector<Particle> particles = pf.particles;
+          // for(int i=0; i<pf.particles.size(); i++)
+          //   cout << "particle[" << i << "].weight = " << pf.particles[i].weight << endl;
     		  int num_particles = particles.size();
     		  double highest_weight = -1.0;
     		  Particle best_particle;
@@ -141,7 +162,7 @@ int main()
           // std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
-        }
+        }  // end if telemetry
       } else {
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
