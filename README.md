@@ -1,146 +1,40 @@
-# Overview
-This repository contains all the code needed to complete the final project for the Localization course in Udacity's Self-Driving Car Nanodegree.
+This repository contains the implementation of a particle filter which solves the localization problem of the Kidnapped Vehicle project of Udacity's Self-Driving Car Nanodegree.
 
-#### Submission
-All you will submit is your completed version of `particle_filter.cpp`, which is located in the `src` directory. You should probably do a `git pull` before submitting to verify that your project passes the most up-to-date version of the grading code (there are some parameters in `src/main.cpp` which govern the requirements on accuracy and run time.)
-
-## Project Introduction
+# Project Introduction
 Your robot has been kidnapped and transported to a new location! Luckily it has a map of this location, a (noisy) GPS estimate of its initial location, and lots of (noisy) sensor and control data.
 
-In this project you will implement a 2 dimensional particle filter in C++. Your particle filter will be given a map and some initial localization information (analogous to what a GPS would provide). At each time step your filter will also get observation and control data. 
+In this project you will implement a 2 dimensional particle filter in C++. Your particle filter will be given a map and some initial localization information (analogous to what a GPS would provide). At each time step your filter will also get observation and control data.
 
-## Running the Code
-This project involves the Term 2 Simulator which can be downloaded [here](https://github.com/udacity/self-driving-car-sim/releases)
+# Particle filter
 
-This repository includes two files that can be used to set up and intall uWebSocketIO for either Linux or Mac systems. For windows you can use either Docker, VMware, or even Windows 10 Bash on Ubuntu to install uWebSocketIO.
+## Initialization
+The first thing that needs to be done is initialize the particle filter with the number of particles that we want to use and the respective particles. I used 100 particles as this number provided a good solution without too much processing load. Each particle was initialized at the sensed GPS position and heading with Gaussian noise added to each of these variables.
 
-Once the install for uWebSocketIO is complete, the main program can be built and ran by doing the following from the project top directory.
+## Prediction
+In this step, the position of all particles are updated according to the motion model (bicycle model) and the control measurements (velocity and yaw rate) for the elapsed time since the last update. This is also a probabilistic process since the control measurements can have noise. According to this model, the new positions are updated as follows:
 
-1. mkdir build
-2. cd build
-3. cmake ..
-4. make
-5. ./particle_filter
+![Simulation window](report/motion_model_yawrate_0.png)
+Update equations when the yaw rate is 0. Taken from the Udacity lessons.
 
-Alternatively some scripts have been included to streamline this process, these can be leveraged by executing the following in the top directory of the project:
+![Simulation window](report/motion_model_yawrate_not_0.png)
+Update equations when the yaw rate is not 0. Taken from the Udacity lessons.
+
+If we considered that the control measurements were noisy, then we'd add Gaussian noise to the velocity and yaw rate before computing the new positions. However, contrary to what is explained in the lessons, the provided standard deviations for the prediction step are actually for the GPS measurements, which are unfit to use with the control variables. As such, instead of adding noise to the control measurements I added noise to the predicted localization (similar to what is done in the initialization step).
+
+## Update
+In the update step, in short, we need to compute the weights for each particle given new sensor measurements. For each particle, we need to transform the LIDAR observations from the particle's coordinates to map coordinates. Afterwards, for each transformed observation of each particle, we need to associate it to the nearest map landmark (computing Nearest Neighbor). Each of these associations (transformed observation to map landmarks) will be part of the final weight of the corresponding particle, by computing how probable it is that the transformed observation corresponds to its associated landmark according to a normal multivariate distribution, using sensor standard deviations. The final weight of the particle will be the product of each of the individual observation weights.
+
+Each of the transformed observations coordinates and associations for each particle are saved so they can be sent back to the simulator for visualization purposes.
+
+## Resampling
+The final step of the particle filter pipeline is resampling, where the particles are resampled according to their weights. In this project, I used a discrete distribution.
+
+# Results
+The implemented particle filter successfully estimates the robot's location. A recording of a simulator run can be seen in [this video](report/particle_filter_project.mp4).
+
+# Running the code
+Some scripts have been included to streamline the process of building and running the particle filter, these can be leveraged by executing the following in the top directory of the project:
 
 1. ./clean.sh
 2. ./build.sh
 3. ./run.sh
-
-Tips for setting up your environment can be found [here](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/0949fca6-b379-42af-a919-ee50aa304e6a/lessons/f758c44c-5e40-4e01-93b5-1a82aa4e044f/concepts/23d376c7-0195-4276-bdf0-e02f1f3c665d)
-
-Note that the programs that need to be written to accomplish the project are src/particle_filter.cpp, and particle_filter.h
-
-The program main.cpp has already been filled out, but feel free to modify it.
-
-Here is the main protcol that main.cpp uses for uWebSocketIO in communicating with the simulator.
-
-INPUT: values provided by the simulator to the c++ program
-
-// sense noisy position data from the simulator
-
-["sense_x"] 
-
-["sense_y"] 
-
-["sense_theta"] 
-
-// get the previous velocity and yaw rate to predict the particle's transitioned state
-
-["previous_velocity"]
-
-["previous_yawrate"]
-
-// receive noisy observation data from the simulator, in a respective list of x/y values
-
-["sense_observations_x"] 
-
-["sense_observations_y"] 
-
-
-OUTPUT: values provided by the c++ program to the simulator
-
-// best particle values used for calculating the error evaluation
-
-["best_particle_x"]
-
-["best_particle_y"]
-
-["best_particle_theta"] 
-
-//Optional message data used for debugging particle's sensing and associations
-
-// for respective (x,y) sensed positions ID label 
-
-["best_particle_associations"]
-
-// for respective (x,y) sensed positions
-
-["best_particle_sense_x"] <= list of sensed x positions
-
-["best_particle_sense_y"] <= list of sensed y positions
-
-
-Your job is to build out the methods in `particle_filter.cpp` until the simulator output says:
-
-```
-Success! Your particle filter passed!
-```
-
-# Implementing the Particle Filter
-The directory structure of this repository is as follows:
-
-```
-root
-|   build.sh
-|   clean.sh
-|   CMakeLists.txt
-|   README.md
-|   run.sh
-|
-|___data
-|   |   
-|   |   map_data.txt
-|   
-|   
-|___src
-    |   helper_functions.h
-    |   main.cpp
-    |   map.h
-    |   particle_filter.cpp
-    |   particle_filter.h
-```
-
-The only file you should modify is `particle_filter.cpp` in the `src` directory. The file contains the scaffolding of a `ParticleFilter` class and some associated methods. Read through the code, the comments, and the header file `particle_filter.h` to get a sense for what this code is expected to do.
-
-If you are interested, take a look at `src/main.cpp` as well. This file contains the code that will actually be running your particle filter and calling the associated methods.
-
-## Inputs to the Particle Filter
-You can find the inputs to the particle filter in the `data` directory. 
-
-#### The Map*
-`map_data.txt` includes the position of landmarks (in meters) on an arbitrary Cartesian coordinate system. Each row has three columns
-1. x position
-2. y position
-3. landmark id
-
-### All other data the simulator provides, such as observations and controls.
-
-> * Map data provided by 3D Mapping Solutions GmbH.
-
-## Success Criteria
-If your particle filter passes the current grading code in the simulator (you can make sure you have the current version at any time by doing a `git pull`), then you should pass! 
-
-The things the grading code is looking for are:
-
-
-1. **Accuracy**: your particle filter should localize vehicle position and yaw to within the values specified in the parameters `max_translation_error` and `max_yaw_error` in `src/main.cpp`.
-
-2. **Performance**: your particle filter should complete execution within the time of 100 seconds.
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
-
-

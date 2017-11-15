@@ -148,12 +148,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 						double exponential = -(x_term + y_term);
 						double w = gauss_norm * exp(exponential);
 
-						double w_obsi = 1/(2*M_PI*std_landmark[0]*std_landmark[1])*exp(-0.5*
-				    ((x_m - closest_landmark.x_f)*(x_m - closest_landmark.x_f)/(std_landmark[0]*std_landmark[0]) +
-				    (y_m - closest_landmark.y_f)*(y_m - closest_landmark.y_f)/(std_landmark[1]*std_landmark[1])));
-
 						// update total particle weight
-						p.weight *= w_obsi;
+						p.weight *= w;
 				}  // end for loop observations
 
 				// save particle weight and increment total particle weight sum
@@ -164,6 +160,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 				particles[i] = p;
 		} // end for loop particles
 
+		// probability normalization
 		// for(int i=0; i<weights.size(); i++){
 		// 	weights[i] = weights[i] / particle_weight_sum;
 		// }
