@@ -14,9 +14,11 @@ The first thing that needs to be done is initialize the particle filter with the
 In this step, the position of all particles are updated according to the motion model (bicycle model) and the control measurements (velocity and yaw rate) for the elapsed time since the last update. This is also a probabilistic process since the control measurements can have noise. According to this model, the new positions are updated as follows:
 
 ![Simulation window](report/motion_model_yawrate_0.png)
+
 Update equations when the yaw rate is 0. Taken from the Udacity lessons.
 
 ![Simulation window](report/motion_model_yawrate_not_0.png)
+
 Update equations when the yaw rate is not 0. Taken from the Udacity lessons.
 
 If we considered that the control measurements were noisy, then we'd add Gaussian noise to the velocity and yaw rate before computing the new positions. However, contrary to what is explained in the lessons, the provided standard deviations for the prediction step are actually for the GPS measurements, which are unfit to use with the control variables. As such, instead of adding noise to the control measurements I added noise to the predicted localization (similar to what is done in the initialization step).
